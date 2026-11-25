@@ -15,11 +15,24 @@
 ## 下载运行
 
 1. [下载 MyCat-macOS-universal.zip](https://github.com/miaomeow12/MyCat/releases/latest/download/MyCat-macOS-universal.zip)，解压后把 **MyCat.app** 拖到“应用程序”。
-2. 打开应用。单击猫右上角的 **菜单 ▾** 或菜单栏 **🐾**。
+2. 打开应用。如果 macOS 阻止打开，先按下方“首次打开被 macOS 拦截”的步骤处理。启动后单击猫右上角的 **菜单 ▾** 或菜单栏 **🐾**。
 3. 开启 **键盘互动**，按提示前往 **系统设置 → 隐私与安全性 → 输入监控** 授权 MyCat。没有出现在列表时，可用 `+` 添加安装后的 MyCat.app。
 4. 切回编辑器或聊天窗口打字，猫会交替抬爪、落爪；鼠标点击时，小鼠标会下压并显示点击反馈。
 
-下载包使用 ad-hoc 签名，尚未通过 Apple 公证。其他 Mac 可能需要在“隐私与安全性”中允许打开。请只使用本仓库的下载或自行编译的版本。
+### 首次打开被 macOS 拦截
+
+当前下载包仅使用 ad-hoc（本地）签名，尚未使用 Apple Developer ID 签名，也未经过 Apple 公证。因此首次下载运行时，可能出现 **“MyCat” Not Opened**，并提示 **Apple could not verify “MyCat” is free of malware**。
+
+这表示 macOS 无法验证该应用，不等于已经检测到病毒；当前版本也没有获得 Apple 的安全验证。如果确认下载来自本仓库的 Release，并决定继续打开：
+
+1. 在提示框点 **Done（完成）**。
+2. 打开 **系统设置（System Settings）→ 隐私与安全性（Privacy & Security）**。
+3. 向下找到 MyCat 被阻止的提示，点击 **仍要打开（Open Anyway）**。
+4. 按系统提示验证身份并确认 **打开（Open）**，然后启动 MyCat。
+
+如果没有看到“仍要打开”，先再次尝试打开 MyCat，再返回此设置页面查看。受公司设备管理限制的 Mac 可能需要管理员处理。
+
+详细说明见 [Apple 官方：在 Mac 上安全地打开 App](https://support.apple.com/en-us/102445)。正式的 Developer ID 签名和 Apple 公证尚未完成；当前步骤不是已经完成公证的替代声明。
 
 ## 它怎么陪你工作
 
