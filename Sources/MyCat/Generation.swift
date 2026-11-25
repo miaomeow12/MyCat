@@ -1,8 +1,17 @@
 import Cocoa
 
-let companionPrompt = """
+private let baseCompanionPrompt = """
 Create a production desktop-pet animation sprite sheet from the reference photo of THIS person's cat. Preserve its distinctive fur colors, markings, eye color, face shape and ears. Style: extremely cute chibi hand-drawn 2D cat sticker, oversized rounded head, small fluffy seated body, soft watercolor/cel shading, warm dark outlines. Not photographic. EXACTLY 4 columns by 2 rows, eight equal rectangular cells, one complete cat per cell. Same cat identity, same centered scale and baseline in every cell; 10% transparent padding around every cat; ears and paws never touch cell boundaries. Genuine transparent background, no shadow fringe, no grid, no text, no props, no keyboard or desk. Front-facing seated bust with front paws at lower edge. Row-major cells: 1 idle looking forward, paws down; 2 image-left paw raised for typing; 3 image-right paw raised for typing; 4 head/eyes looking image-left, right paw reaching slightly forward; 5 head/eyes looking image-right, right paw reaching slightly forward; 6 looking slightly upward, curious; 7 asleep, closed eyes and relaxed head, paws tucked; 8 happy being petted, closed smiling eyes, pink cheeks. Keep coherent proportions, cell alignment, colors and markings throughout all eight cells. Avoid vivid colored fringes or background remnants.
 """
+
+func companionPrompt(for species: PetSpecies) -> String {
+    var prompt = baseCompanionPrompt
+    if species == .dog {
+        prompt = prompt.replacingOccurrences(of: "cat", with: "dog")
+        prompt += " Preserve the reference dog's breed-specific muzzle length, nose shape, floppy or upright ears, coat markings and tail. Do not give the dog feline whiskers, cat ears or a cat-like face. Keep a believable puppy/dog anatomy, not a generic cat reskin."
+    }
+    return prompt
+}
 
 enum ImageStreamEvent {
     case preview(Data), complete(Data)
@@ -50,13 +59,13 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
     }
 }
 enum ImageAPI {
-    static func request(photo: Data, key: String, model: String) throws -> URLRequest {
+    static func request(photo: Data, key: String, model: String, species: PetSpecies = .cat) throws -> URLRequest {
         guard !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !key.contains("\n"), !key.contains("\r"), !model.isEmpty else {
             throw GenerationError.message("请输入有效 API Key 和模型名。")
         }
         guard photo.count <= 14_000_000, NSImage(data: photo) != nil else {
-            throw GenerationError.message("请使用小于 14 MB 的有效猫照片。")
+            throw GenerationError.message("请使用小于 14 MB 的有效宠物照片。")
         }
         var request = URLRequest(url: URL(string: "https://api.openai.com/v1/images/edits")!)
         request.httpMethod = "POST"
@@ -65,7 +74,7 @@ enum ImageAPI {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "model": model, "prompt": companionPrompt,
+            "model": model, "prompt": companionPrompt(for: species),
             "images": [["image_url": "data:image/png;base64," + photo.base64EncodedString()]],
             "size": "1536x1024", "quality": "high", "output_format": "png",
             "background": "transparent", "stream": true, "partial_images": 2
@@ -74,8 +83,8 @@ enum ImageAPI {
     }
     static func generate(photo: Data, key: String, model: String,
                          preview: @escaping (Data) async -> Void,
-                         configuration: URLSessionConfiguration? = nil) async throws -> Data {
-        let request = try request(photo: photo, key: key, model: model)
+                         configuration: URLSessionConfiguration? = nil, species: PetSpecies = .cat) async throws -> Data {
+        let request = try request(photo: photo, key: key, model: model, species: species)
         let config = configuration ?? URLSessionConfiguration.ephemeral
         config.urlCache = nil
         config.httpShouldSetCookies = false
@@ -138,8 +147,12 @@ final class GenerationWindow: NSObject, NSWindowDelegate {
     private var window: NSWindow!
     private let keyField = NSSecureTextField()
     private let modelField = NSTextField(string: "gpt-image-2.5-flare")
+    private let speciesField = NSPopUpButton()
+    private let nameField = NSTextField()
+    private var completedSpecies: PetSpecies = .cat
+    private var completedName = ""
     private let photoLabel = NSTextField(labelWithString: "尚未选择照片")
-    private let progressLabel = NSTextField(wrappingLabelWithString: "选择猫照片并填写自己的 API Key。点击生成才会上传。")
+    private let progressLabel = NSTextField(wrappingLabelWithString: "选择宠物照片并填写自己的 API Key。点击生成才会上传。")
     private let previewView = NSImageView()
     private var chooseButton: NSButton!
     private var generateButton: NSButton!
@@ -148,15 +161,16 @@ final class GenerationWindow: NSObject, NSWindowDelegate {
     private var photo: Data?
     private var completed: Data?
     private var task: Task<Void, Never>?
-    private let apply: (Data) throws -> Void
-    init(apply: @escaping (Data) throws -> Void) { self.apply = apply; super.init() }
+    private let apply: (Data, PetSpecies, String) throws -> Void
+    init(apply: @escaping (Data, PetSpecies, String) throws -> Void) { self.apply = apply; super.init() }
     func show() {
         if window == nil { build() }
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
     }
-    func renderPreview(to url: URL) throws {
+    func renderPreview(to url: URL, species: PetSpecies = .cat) throws {
         show()
+        speciesField.selectItem(at: PetSpecies.allCases.firstIndex(of: species)!)
         window.contentView!.displayIfNeeded()
         let root = window.contentView!
         let rep = root.bitmapImageRepForCachingDisplay(in: root.bounds)!
@@ -167,7 +181,7 @@ final class GenerationWindow: NSObject, NSWindowDelegate {
     private func build() {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 680),
                           styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-        window.title = "把你的猫变成工作搭子"
+        window.title = "把你的宠物变成工作搭子"
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()
@@ -181,10 +195,16 @@ final class GenerationWindow: NSObject, NSWindowDelegate {
         privacy.font = .systemFont(ofSize: 12)
         privacy.textColor = .secondaryLabelColor
         put(privacy, NSRect(x: 24, y: 566, width: 512, height: 48))
-        chooseButton = NSButton(title: "选择猫照片…", target: self, action: #selector(choosePhoto))
+        chooseButton = NSButton(title: "选择宠物照片…", target: self, action: #selector(choosePhoto))
         put(chooseButton, NSRect(x: 24, y: 520, width: 130, height: 32))
         photoLabel.lineBreakMode = .byTruncatingMiddle
-        put(photoLabel, NSRect(x: 164, y: 527, width: 372, height: 20))
+        photoLabel.font = .systemFont(ofSize: 10)
+        put(photoLabel, NSRect(x: 24, y: 507, width: 512, height: 13))
+        speciesField.addItems(withTitles: PetSpecies.allCases.map { $0.icon + " " + $0.title })
+        speciesField.toolTip = "选择猫或狗，生成完成后会保存在对应种类下"
+        put(speciesField, NSRect(x: 164, y: 520, width: 100, height: 28))
+        nameField.placeholderString = "宠物名字（可选）"
+        put(nameField, NSRect(x: 276, y: 520, width: 260, height: 28))
         keyField.placeholderString = "OpenAI API Key（不要发到聊天里）"
         put(keyField, NSRect(x: 24, y: 477, width: 512, height: 28))
         let modelLabel = NSTextField(labelWithString: "图像模型")
@@ -230,13 +250,17 @@ final class GenerationWindow: NSObject, NSWindowDelegate {
         generateButton.isEnabled = !running
         keyField.isEnabled = !running
         modelField.isEnabled = !running
+        speciesField.isEnabled = !running
+        nameField.isEnabled = !running
     }
     @objc private func startGeneration() {
         guard task == nil else { return }
-        guard let photo else { progressLabel.stringValue = "请先选择一张猫照片。"; return }
+        guard let photo else { progressLabel.stringValue = "请先选择一张宠物照片。"; return }
         let key = keyField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let model = modelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty, !model.isEmpty else { progressLabel.stringValue = "请填写你自己的 API Key 和图像模型名。"; return }
+        let species = PetSpecies.allCases[speciesField.indexOfSelectedItem]
+        let petName = nameField.stringValue
         keyField.stringValue = ""
         completed = nil
         applyButton.isEnabled = false
@@ -246,18 +270,20 @@ final class GenerationWindow: NSObject, NSWindowDelegate {
             guard let self else { return }
             defer { self.task = nil; self.setRunning(false) }
             do {
-                let data = try await ImageAPI.generate(photo: photo, key: key, model: model) { [weak self] partial in
+                let data = try await ImageAPI.generate(photo: photo, key: key, model: model, preview: { [weak self] partial in
                     await MainActor.run {
                         self?.previewView.image = NSImage(data: partial)
                         self?.progressLabel.stringValue = "正在细化 Q 版动作… 当前为实时草稿，最终完成后可应用。"
                     }
-                }
+                }, species: species)
                 try Task.checkCancellation()
                 _ = try CatAtlas.decode(data)
                 self.completed = data
+                self.completedSpecies = species
+                self.completedName = petName
                 self.previewView.image = NSImage(data: data)
                 self.applyButton.isEnabled = true
-                self.progressLabel.stringValue = "生成完成！检查猫的花纹和动作后，点「应用为桌宠」。不满意可重新填写 Key 再生成。"
+                self.progressLabel.stringValue = "生成完成！检查宠物的样子和动作后，点「应用为桌宠」。不满意可重新填写 Key 再生成。"
             } catch {
                 if Task.isCancelled { self.progressLabel.stringValue = "已取消本机等待，原桌宠保持不变。服务端已开始的生成可能仍会计费。" }
                 else { self.progressLabel.stringValue = error.localizedDescription }
@@ -268,10 +294,10 @@ final class GenerationWindow: NSObject, NSWindowDelegate {
     @objc private func applyCat() {
         guard let completed else { return }
         do {
-            try apply(completed)
+            try apply(completed, completedSpecies, completedName)
             self.completed = nil
             applyButton.isEnabled = false
-            progressLabel.stringValue = "已应用到桌宠，生成窗口可以关闭。"
+            progressLabel.stringValue = "已保存到「切换宠物」并应用，可以继续添加另一只猫或狗。"
         } catch { progressLabel.stringValue = "应用失败：" + error.localizedDescription }
     }
     func windowWillClose(_ notification: Notification) {

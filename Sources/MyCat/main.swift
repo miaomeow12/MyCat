@@ -222,30 +222,73 @@ final class App: NSObject, NSApplicationDelegate {
     var permissionTimer: Timer?
     var demoTimer: Timer?
     var busy = false
-    @MainActor lazy var generator = GenerationWindow { [weak self] data in
+    private var petLibrary: PetLibrary?
+    var petsMenu: NSMenu?
+    func library() throws -> PetLibrary {
+        if let petLibrary { return petLibrary }
+        let store = try PetLibrary(directory: folder.appendingPathComponent("pets", isDirectory: true))
+        if let legacy = try? Data(contentsOf: sheetURL), (try? CatAtlas.decode(legacy)) != nil {
+            try store.migrateLegacyIfNeeded(legacy)
+        }
+        petLibrary = store
+        return store
+    }
+    @MainActor lazy var generator = GenerationWindow { [weak self] data, species, name in
         guard let self else { return }
         let frames = try CatAtlas.decode(data)
-        try FileManager.default.createDirectory(at: self.folder, withIntermediateDirectories: true)
-        let versioned = self.folder.appendingPathComponent("companion-\(UUID().uuidString).png")
-        try data.write(to: versioned, options: .atomic)
-        try data.write(to: self.sheetURL, options: .atomic)
+        _ = try self.library().save(data: data, name: name, species: species)
         self.pet.frames = frames
         self.pet.cartoon = true
         self.pet.affection = 1
         self.refreshAppearanceItems()
+        self.refreshPetsMenu()
     }
     var cartoonItem: NSMenuItem?
     var mouseItem: NSMenuItem?
     var sheetURL: URL { folder.appendingPathComponent("companion.png") }
+    func bundledFrames() -> [NSImage] {
+        if let url = Bundle.main.url(forResource: "personal-cat", withExtension: "png"),
+           let data = try? Data(contentsOf: url), let frames = try? CatAtlas.decode(data) { return frames }
+        return GenericCat.frames()
+    }
     func loadCompanion() {
-        if let data = try? Data(contentsOf: sheetURL), let frames = try? CatAtlas.decode(data) {
-            pet.frames = frames
-        } else if let url = Bundle.main.url(forResource: "personal-cat", withExtension: "png"),
-                  let data = try? Data(contentsOf: url), let frames = try? CatAtlas.decode(data) {
-            pet.frames = frames
-        } else {
-            pet.frames = GenericCat.frames()
+        do {
+            let store = try library()
+            if let selected = store.active { pet.frames = try CatAtlas.decode(store.data(for: selected)); return }
+        } catch { alert("宠物库未能读取", "原文件不会删除。\n" + error.localizedDescription) }
+        pet.frames = bundledFrames()
+    }
+    func refreshPetsMenu() {
+        guard let menu = petsMenu else { return }
+        menu.removeAllItems()
+        let store = try? library()
+        let builtin = NSMenuItem(title: "🐱 内置猫咪", action: #selector(switchPet), keyEquivalent: "")
+        builtin.target = self
+        builtin.state = store?.active == nil ? .on : .off
+        menu.addItem(builtin)
+        for saved in store?.pets ?? [] {
+            let item = NSMenuItem(title: saved.species.icon + " " + saved.name, action: #selector(switchPet), keyEquivalent: "")
+            item.target = self
+            item.representedObject = saved.id.uuidString
+            item.state = store?.active?.id == saved.id ? .on : .off
+            menu.addItem(item)
         }
+    }
+    @objc func switchPet(_ sender: NSMenuItem) {
+        do {
+            let store = try library()
+            let id = (sender.representedObject as? String).flatMap(UUID.init(uuidString:))
+            let frames: [NSImage]
+            if let id, let record = store.pets.first(where: { $0.id == id }) {
+                frames = try CatAtlas.decode(store.data(for: record))
+            } else { frames = bundledFrames() }
+            try store.select(id)
+            pet.frames = frames
+            pet.cartoon = true
+            pet.affection = 1
+            refreshPetsMenu()
+            refreshAppearanceItems()
+        } catch { alert("切换失败", error.localizedDescription) }
     }
     func refreshAppearanceItems() {
         cartoonItem?.state = pet.cartoon ? .on : .off
@@ -259,7 +302,11 @@ final class App: NSObject, NSApplicationDelegate {
         refreshAppearanceItems()
     }
     @MainActor @objc func generateCat() { generator.show() }
-    let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("MyCatLocal", isDirectory: true)
+    let folder: URL
+    init(folder: URL? = nil) {
+        self.folder = folder ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("MyCatLocal", isDirectory: true)
+        super.init()
+    }
     var imageURL: URL { folder.appendingPathComponent("cat.png") }
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -276,13 +323,19 @@ final class App: NSObject, NSApplicationDelegate {
         loadCompanion()
         if let image = NSImage(contentsOf: imageURL) { pet.photo = image; pet.hint = "点我摸摸 · 拖动搬家" }
         let menu = NSMenu()
-        add(menu, "照片 → 生成我的 Q 版猫…", #selector(generateCat))
+        add(menu, "照片 → 生成 Q 版猫／狗…", #selector(generateCat))
+        let switchItem = NSMenuItem(title: "切换宠物", action: nil, keyEquivalent: "")
+        let choices = NSMenu()
+        petsMenu = choices
+        switchItem.submenu = choices
+        menu.addItem(switchItem)
+        refreshPetsMenu()
         add(menu, "Q 版外观（关闭可看原照片）", #selector(toggleCartoon))
         cartoonItem = menu.items.last
         add(menu, "跟着鼠标一起工作", #selector(toggleMouse))
         mouseItem = menu.items.last
         menu.addItem(.separator())
-        add(menu, "导入猫照片并本地抠图…", #selector(importCutout))
+        add(menu, "导入宠物照片并本地抠图…", #selector(importCutout))
         add(menu, "直接导入图片（保留透明背景）…", #selector(importPlain))
         menu.addItem(.separator())
         add(menu, "开启键盘互动…", #selector(toggleKeyboard))
@@ -291,7 +344,7 @@ final class App: NSObject, NSApplicationDelegate {
         demoItem = menu.items.last
         add(menu, "输入诊断…", #selector(inputDiagnostics))
         diagnosticItem = menu.items.last
-        add(menu, "摸摸猫咪 ♡", #selector(petCat))
+        add(menu, "摸摸宠物 ♡", #selector(petCat))
         add(menu, "调整大小", #selector(resize))
         add(menu, "鼠标穿透（菜单栏可关闭）", #selector(clickThrough))
         add(menu, "回到屏幕右下角", #selector(resetPosition))
@@ -451,7 +504,7 @@ final class App: NSObject, NSApplicationDelegate {
         picker.allowedContentTypes = [.jpeg, .png, .heic, .tiff]
         picker.allowsMultipleSelection = false
         picker.canChooseDirectories = false
-        picker.message = cutout ? "选一张主体清晰的猫照片。抠图在本机完成，不上传。" : "选择猫图片，透明 PNG 效果最好。"
+        picker.message = cutout ? "选一张主体清晰的宠物照片。抠图在本机完成，不上传。" : "选择宠物图片，透明 PNG 效果最好。"
         NSApp.activate(ignoringOtherApps: true)
         guard picker.runModal() == .OK, let url = picker.url else { return }
         busy = true
@@ -524,7 +577,7 @@ final class App: NSObject, NSApplicationDelegate {
         } catch { alert("删除失败", error.localizedDescription) }
     }
     @objc func privacy() {
-        alert("你的猫，陪你一起上班", "日常运行和本地抠图都在本机。鼠标陪伴读取指针位置与鼠标按下/松开事件，用于看向和小鼠标点击反馈；不移动真实鼠标，不保存轨迹。\n\n键盘互动需你主动开启输入监控，只感应按下事件，不读取键码或文字，不保存输入。\n\n「生成我的 Q 版猫」是可选联网功能：你选的照片会在点击生成后直传 api.openai.com，费用由你填写的 Key 对应账户承担。Key 仅在本次生成请求中使用，不写文件。生成窗口有实时草稿预览，确认后将动作图保存到 ~/Library/Application Support/MyCatLocal/；旧版以带 UUID 的文件保留。没有统计上报或自动更新。\n\n点「菜单 ▾」打开菜单。当前 Q 版为八种动作图加轻微呼吸和移动效果。")
+        alert("你的宠物，陪你一起上班", "日常运行和本地抠图都在本机。鼠标陪伴读取指针位置与鼠标按下/松开事件，用于看向和小鼠标点击反馈；不移动真实鼠标，不保存轨迹。\n\n键盘互动需你主动开启输入监控，只感应按下事件，不读取键码或文字，不保存输入。\n\n「生成 Q 版猫／狗」是可选联网功能：你选的照片会在点击生成后直传 api.openai.com，费用由你填写的 Key 对应账户承担。Key 仅在本次生成请求中使用，不写文件。生成窗口有实时草稿预览，确认后将动作图保存到 ~/Library/Application Support/MyCatLocal/；多只猫狗及当前选择保存在 pets 子目录。没有统计上报或自动更新。\n\n点「菜单 ▾」打开菜单。当前 Q 版为八种动作图加轻微呼吸和移动效果。")
     }
     @objc func quit() { NSApp.terminate(nil) }
 }
@@ -540,8 +593,35 @@ private let keyboardCallback: CGEventTapCallBack = { _, type, event, info in
     return Unmanaged.passUnretained(event)
 }
 let app = NSApplication.shared
-let delegate = App()
-if CommandLine.arguments.contains("--export-generic-atlas") {
+let testFolder: URL? = CommandLine.arguments.dropFirst().contains(where: { $0.hasPrefix("--") && $0.contains("test") })
+    ? FileManager.default.temporaryDirectory.appendingPathComponent("mycat-ui-check-" + UUID().uuidString) : nil
+let delegate = App(folder: testFolder)
+defer { if let testFolder { try? FileManager.default.removeItem(at: testFolder) } }
+if CommandLine.arguments.contains("--pets-ui-test") {
+    app.finishLaunching()
+    delegate.keyboardWanted = false
+    delegate.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
+    let store = try delegate.library()
+    let fixture = GenericCat.atlasData()
+    let cat = try store.save(data: fixture, name: "测试猫", species: .cat)
+    let dog = try store.save(data: fixture, name: "测试狗", species: .dog)
+    delegate.refreshPetsMenu()
+    precondition(delegate.petsMenu!.items.count == 3)
+    precondition(delegate.petsMenu!.items[2].state == .on)
+    delegate.switchPet(delegate.petsMenu!.items[1])
+    precondition(store.active?.id == cat.id && delegate.pet.frames.count == 8)
+    delegate.switchPet(delegate.petsMenu!.items[2])
+    precondition(store.active?.id == dog.id)
+    let reopened = try PetLibrary(directory: delegate.folder.appendingPathComponent("pets"))
+    precondition(reopened.active?.id == dog.id)
+    delegate.switchPet(delegate.petsMenu!.items[0])
+    precondition(store.active == nil && store.pets.count == 2)
+    delegate.timer?.invalidate()
+    delegate.applicationWillTerminate(Notification(name: NSApplication.willTerminateNotification))
+    delegate.panel.orderOut(nil)
+    NSStatusBar.system.removeStatusItem(delegate.status)
+    print("PASS: actual pet menu switches cat/dog/builtin, checkmarks and saved selection; isolated temporary store")
+} else if CommandLine.arguments.contains("--export-generic-atlas") {
     try GenericCat.atlasData().write(to: URL(fileURLWithPath: CommandLine.arguments.last!))
     print("PASS: exported procedural generic-cat fixture without private images")
 } else if CommandLine.arguments.contains("--export-demo") {
@@ -566,10 +646,10 @@ if CommandLine.arguments.contains("--export-generic-atlas") {
         }
     }
     app.run()
-} else if CommandLine.arguments.contains("--generation-ui-test") {
+} else if CommandLine.arguments.contains("--generation-ui-test") || CommandLine.arguments.contains("--generation-dog-ui-test") {
     app.finishLaunching()
     try MainActor.assumeIsolated {
-        try delegate.generator.renderPreview(to: URL(fileURLWithPath: CommandLine.arguments.last!))
+        try delegate.generator.renderPreview(to: URL(fileURLWithPath: CommandLine.arguments.last!), species: CommandLine.arguments.contains("--generation-dog-ui-test") ? .dog : .cat)
     }
     print("PASS: generation window rendered without any network request")
 } else if CommandLine.arguments.contains("--companion-test") {
@@ -618,6 +698,7 @@ if CommandLine.arguments.contains("--export-generic-atlas") {
         func menuWillOpen(_ menu: NSMenu) { opened = true }
     }
     app.finishLaunching()
+    delegate.keyboardWanted = false
     delegate.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
     let probe = MenuProbe()
     delegate.pet.popup!.delegate = probe

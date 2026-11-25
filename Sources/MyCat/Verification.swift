@@ -31,6 +31,12 @@ func runGenerationChecks(assetURL: URL) async throws {
     precondition(!String(data: request.httpBody!, encoding: .utf8)!.contains(key), "Key must not enter prompt or request body")
     let photo = (payload["images"] as! [[String: String]])[0]["image_url"]!
     precondition(photo.hasPrefix("data:image/png;base64,"))
+    let dogRequest = try ImageAPI.request(photo: image, key: key, model: "gpt-image-2.5-flare", species: .dog)
+    let dogPayload = try JSONSerialization.jsonObject(with: dogRequest.httpBody!) as! [String: Any]
+    let dogPrompt = dogPayload["prompt"] as! String
+    precondition(dogPrompt.contains("THIS person's dog") && dogPrompt.contains("breed-specific muzzle"))
+    precondition(!dogPrompt.contains("THIS person's cat"), "Dog requests must not use the cat identity prompt")
+    precondition((payload["prompt"] as! String).contains("THIS person's cat"))
     let config = URLSessionConfiguration.ephemeral
     config.protocolClasses = [ImageFixtureProtocol.self] // All requests intercepted; cannot reach network.
     func event(_ type: String) throws -> Data {
@@ -62,5 +68,5 @@ func runGenerationChecks(assetURL: URL) async throws {
         _ = try await ImageAPI.generate(photo: image, key: key, model: "test", preview: { _ in }, configuration: config)
         preconditionFailure("Failed stream must not produce an image")
     } catch { precondition(error.localizedDescription.contains("未能")) }
-    print("PASS: API request contract; chunked SSE preview + completion; atlas decode; HTTP 401; incomplete and failed streams (offline fixtures, no paid API call)")
+    print("PASS: API request contract; cat/dog species prompts; chunked SSE preview + completion; atlas decode; HTTP 401; incomplete and failed streams (offline fixtures, no paid API call)")
 }

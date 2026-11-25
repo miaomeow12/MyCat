@@ -47,3 +47,30 @@ for rate in [24, 30, 60, 120] {
     precondition(!sample.isTyping)
 }
 print("PASS: deterministic 30s/300-key replay, readable >=133ms poses, no idle gaps, bounded queue, stop recovery, held/multiple mouse buttons, 24–120Hz timing")
+
+let storeRoot = FileManager.default.temporaryDirectory.appendingPathComponent("mycat-library-tests-" + UUID().uuidString)
+defer { try? FileManager.default.removeItem(at: storeRoot) }
+let library = try PetLibrary(directory: storeRoot)
+let catData = Data("test-cat-atlas".utf8)
+let dogData = Data("test-dog-atlas".utf8)
+try library.migrateLegacyIfNeeded(catData)
+try library.migrateLegacyIfNeeded(catData)
+precondition(library.pets.count == 1 && library.active?.species == .cat, "Legacy cat must migrate once, without duplication")
+let originalCat = library.pets[0]
+let dog = try library.save(data: dogData, name: "  小狗豆豆  ", species: .dog)
+precondition(dog.name == "小狗豆豆" && library.pets.count == 2 && library.active == dog)
+let reopened = try PetLibrary(directory: storeRoot)
+precondition(reopened.active == dog && reopened.pets.count == 2, "Selection and both pets must survive relaunch")
+let savedCatData = try reopened.data(for: originalCat)
+let savedDogData = try reopened.data(for: dog)
+precondition(savedCatData == catData && savedDogData == dogData, "Saving a dog must never overwrite the cat")
+try reopened.select(originalCat.id)
+precondition(reopened.active == originalCat)
+try reopened.select(nil)
+let builtinSelected = try PetLibrary(directory: storeRoot)
+precondition(builtinSelected.active == nil && builtinSelected.pets.count == 2, "Choosing builtin must preserve both custom pets")
+do {
+    try builtinSelected.select(UUID())
+    preconditionFailure("Unknown pet must not change the selection")
+} catch { precondition(builtinSelected.active == nil) }
+print("PASS: cat/dog library save, persistent switching, builtin selection, one-time migration, no overwritten pet, invalid selection rejection")

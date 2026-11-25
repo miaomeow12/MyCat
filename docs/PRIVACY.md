@@ -30,7 +30,9 @@
 `~/Library/Application Support/MyCatLocal/`：
 
 - `cat.png`：本地处理后的真实照片。
-- `companion.png`：当前应用的 Q 版动作图。
+- `companion.png`：旧版本的 Q 版动作图，新版会保留原文件并迁移到宠物库。
+- `pets/pets.json`：已保存猫狗的名字、种类、ID 和当前选择。
+- `pets/<UUID>.png`：每只宠物的动作图。
 - `companion-<UUID>.png`：生成图的保留副本。
 
 “删除原照片”只删除 `cat.png`。退出应用后删除该目录可移除所有自定义图像。系统输入监控授权可在系统设置里撤销。
