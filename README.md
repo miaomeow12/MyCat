@@ -1,10 +1,10 @@
-# MyCat 🐾 — 私有分享版
+# MyCat 🐾
 
-把你自己的猫变成 Q 版桌宠，陪你一起打字、点鼠标、摸鱼。本私有版默认使用主人授权的 Q 版猫素材，直接下载即可使用；不包含原始猫照片或 API Key。
+把你自己的猫变成 Q 版桌宠，陪你一起打字、点鼠标、摸鱼。默认使用主人授权公开分享的 Q 版猫素材，直接下载即可使用；不包含原始猫照片或 API Key。
 
 **macOS 14+ · Apple Silicon / Intel · 原生 Swift / AppKit · 源码可自行编译**
 
-此仓库和 Release 均为私有，只有仓库成员可访问下载；分享给朋友需先授权其 GitHub 账号，或私下发送安装包。
+仓库与下载包公开提供，无需邀请即可下载。默认猫形象根据作者本人猫照片经 AI 生成；不包含原始照片或 API Key。
 
 [下载最新版](https://github.com/miaomeow12/MyCat/releases/latest/download/MyCat-macOS-universal.zip) · [所有版本](https://github.com/miaomeow12/MyCat/releases) · [隐私说明](docs/PRIVACY.md)
 
@@ -108,8 +108,8 @@ open build/MyCat.app
 | `Sources/MyCat/Generation.swift` | 用户自带 Key 的 API 与流式生成窗口 |
 | `Tests/main.swift` | 不需要 GUI 的输入节奏回归 |
 
-项目受 [KeyCat](https://github.com/ElloboDK/KeyCat) 的陪伴交互启发，独立实现，未复制其源码或素材。私有版默认加载 `Resources/personal-cat.png` 中主人授权的 Q 版动作图；自己的自定义动作图优先。无内置素材时回退到 `GenericCat.swift` 绘制的通用猫。原始猫照片不会随安装包分发。
+项目受 [KeyCat](https://github.com/ElloboDK/KeyCat) 的陪伴交互启发，独立实现，未复制其源码或素材。默认加载 `Resources/personal-cat.png` 中主人授权的 Q 版动作图；自己的自定义动作图优先。无内置素材时回退到 `GenericCat.swift` 绘制的通用猫。原始猫照片不会随安装包分发。
 
 ## License
 
-[MIT](LICENSE) 适用于程序代码。个人猫素材与衍生演示不在此许可范围内，仅用于本私有仓库及私下分享。
+程序代码使用 [MIT](LICENSE)。猫咪动作图及衍生演示单独适用[图片素材使用说明](ASSET_LICENSE.md)，允许随本项目及其衍生版本使用和分发；请保留 AI 生成说明。
