@@ -5,6 +5,7 @@ BUILD="$ROOT/build"
 APP="$BUILD/MyCat.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
+cp "$ROOT/ASSET_LICENSE.md" "$APP/Contents/Resources/ASSET_LICENSE.md"
 # The private edition may include the owner's explicitly authorized Q-version atlas.
 if [[ -f "$ROOT/Resources/personal-cat.png" ]]; then
   cp "$ROOT/Resources/personal-cat.png" "$APP/Contents/Resources/"
