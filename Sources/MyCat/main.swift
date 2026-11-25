@@ -240,6 +240,9 @@ final class App: NSObject, NSApplicationDelegate {
     func loadCompanion() {
         if let data = try? Data(contentsOf: sheetURL), let frames = try? CatAtlas.decode(data) {
             pet.frames = frames
+        } else if let url = Bundle.main.url(forResource: "personal-cat", withExtension: "png"),
+                  let data = try? Data(contentsOf: url), let frames = try? CatAtlas.decode(data) {
+            pet.frames = frames
         } else {
             pet.frames = GenericCat.frames()
         }

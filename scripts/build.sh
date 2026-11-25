@@ -5,7 +5,12 @@ BUILD="$ROOT/build"
 APP="$BUILD/MyCat.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
-# No bundled photos or photo-derived artwork: the default cat is drawn in Swift.
+# The private edition may include the owner's explicitly authorized Q-version atlas.
+if [[ -f "$ROOT/Resources/personal-cat.png" ]]; then
+  cp "$ROOT/Resources/personal-cat.png" "$APP/Contents/Resources/"
+else
+  rm -f "$APP/Contents/Resources/personal-cat.png"
+fi
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
 if [[ "${1:-}" == "--universal" ]]; then
   for ARCH in arm64 x86_64; do
