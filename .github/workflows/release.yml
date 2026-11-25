@@ -1,0 +1,24 @@
+name: Release macOS app
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test input model
+        run: ./scripts/test.sh
+      - name: Build Intel and Apple Silicon download
+        run: ./scripts/package.sh
+      - name: Publish download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME"
+          dist/MyCat-macOS-universal.zip dist/SHA256SUMS.txt
+          --verify-tag --title "MyCat $GITHUB_REF_NAME"
+          --notes-file docs/RELEASE_NOTES.md

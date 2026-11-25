@@ -1,0 +1,16 @@
+name: Tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test 30-second input cadence
+        run: ./scripts/test.sh
+      - name: Build native application
+        run: ./scripts/build.sh
